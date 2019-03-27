@@ -7,6 +7,7 @@ import os
 import re
 from lib_bgp_data import Database
 from configparser import ConfigParser
+from datetime import datetime
 
 def main():
     filename = "ris_whoisdump.IPv4"
@@ -32,13 +33,13 @@ def main():
 
     with open(filename) as fp:
         sql_select_table = """SELECT * FROM prefix_origin_history;"""
-        sql_select = """SELECT AGE(first_seen), history 
-                        FROM prefix_origin_history 
+        sql_select = """SELECT AGE(first_seen), history
+                        FROM prefix_origin_history
                         WHERE prefix_origin = (%s);"""
-        sql_insert = """INSERT INTO prefix_origin_history 
+        sql_insert = """INSERT INTO prefix_origin_history
                         VALUES ((%s),DEFAULT, decode(%s, 'hex'));"""
-        sql_update = """UPDATE prefix_origin_history 
-                        SET history = (%s) 
+        sql_update = """UPDATE prefix_origin_history
+                        SET history = (%s), last_updated = (%s)
                         WHERE prefix_origin = (%s);"""
         temp = fp.read().splitlines()
         i = 0
@@ -66,11 +67,11 @@ def main():
                         history.append(0)
                     bit_to_flip = age % 8
                     history[-1] = history[-1] | bit_to_flip
-                    data = (history,prefix_origin)
-                    cur.execute(sql_update,data) 
+                    data = (history, datetime.now(), prefix_origin)
+                    cur.execute(sql_update, data)
     #                days_old =
-    #                data = 
-    #                db.execute(sql_update,data) 
+    #                data =
+    #                db.execute(sql_update,data)
             i+=1
             conn.commit()
     #Close DB connection
