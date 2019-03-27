@@ -5,10 +5,17 @@ import gzip
 import shutil
 import os
 import re
+import datetime
+import logging
 from lib_bgp_data import Database
 from configparser import ConfigParser
 
 def main():
+    #Logging config
+    t = datetime.datetime.now()
+    logging.basicConfig(filename=t.strftime("%d_%m_%Y"))
+    logging.info("Start Time: " + t.strftime("%c"))
+
     filename = "ris_whoisdump.IPv4"
     gz_filename = filename + ".gz"
 
@@ -24,10 +31,13 @@ def main():
     cparser = ConfigParser()
     cparser.read("/etc/bgp/bgp.conf")
     #Establish DB connection, lib_bgp_data doesn't work
-    conn = psycopg2.connect(host = cparser['bgp']['host'],
-                            database = cparser['bgp']['database'],
-                            user = cparser['bgp']['user'],
-                            password = cparser['bgp']['password'])
+    try:
+        conn = psycopg2.connect(host = cparser['bgp']['host'],
+                                database = cparser['bgp']['database'],
+                                user = cparser['bgp']['user'],
+                                password = cparser['bgp']['password'])
+    except:
+        logging.info("Login failed at " + t.strftime("%H:%M:%S"))
     cur = conn.cursor(cursor_factory=psycopg2.extras.NamedTupleCursor)
 
     with open(filename) as fp:
@@ -41,13 +51,16 @@ def main():
                         SET history = (%s) 
                         WHERE prefix_origin = (%s);"""
         temp = fp.read().splitlines()
-        i = 0
+        # log length of input
+        logging.info("Input length: " + len(temp))
+        i = 0 # number of lines
         for line in temp:
             if(not line or line[0]=='%'):
                 continue
             entry = line.split('\t')
             #Remove curly braces
             re.sub('{{ | }}', '', entry[0])
+            # split by ',' does nothing, entry[0] is a ~6 digit string
             origins = entry[0].split(',')
 
             for origin in origins:
@@ -73,6 +86,8 @@ def main():
     #                db.execute(sql_update,data) 
             i+=1
             conn.commit()
+
+    logging.info("Lines processed: " + i)
     #Close DB connection
     cur.close()
     conn.close()
