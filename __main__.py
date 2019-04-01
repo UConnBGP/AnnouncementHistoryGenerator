@@ -5,11 +5,20 @@ import gzip
 import shutil
 import os
 import re
+import logging
+import math
 from lib_bgp_data import Database
 from configparser import ConfigParser
 from datetime import datetime
 
+LOG_LOCATION = r"/home/jab09044/HistoryLog/"
+
 def main():
+    #Logging config
+    t = datetime.now()
+    logging.basicConfig(level=logging.INFO, filename=LOG_LOCATION + t.strftime("%d_%m_%Y"))
+    logging.info("Start Time: " + t.strftime("%c"))
+
     filename = "ris_whoisdump.IPv4"
     gz_filename = filename + ".gz"
 
@@ -20,15 +29,18 @@ def main():
             shutil.copyfileobj(f_gz, f_out)
     os.remove(gz_filename)
 
-    #Parse and upload to DB
-#    db = Database(cursor_factory=psycopg2.extras.NamedTupleCursor)
+    #Parse and upload to DB    
+    #db = Database(cursor_factory=psycopg2.extras.NamedTupleCursor)
     cparser = ConfigParser()
     cparser.read("/etc/bgp/bgp.conf")
     #Establish DB connection, lib_bgp_data doesn't work
-    conn = psycopg2.connect(host = cparser['bgp']['host'],
-                            database = cparser['bgp']['database'],
-                            user = cparser['bgp']['user'],
-                            password = cparser['bgp']['password'])
+    try:
+        conn = psycopg2.connect(host = cparser['bgp']['host'],
+                                database = cparser['bgp']['database'],
+                                user = cparser['bgp']['user'],
+                                password = cparser['bgp']['password'])
+    except:
+        logging.info("Login failed at " + t.strftime("%H:%M:%S"))
     cur = conn.cursor(cursor_factory=psycopg2.extras.NamedTupleCursor)
 
     with open(filename) as fp:
@@ -42,38 +54,51 @@ def main():
                         SET history = (%s), last_updated = (%s)
                         WHERE prefix_origin = (%s);"""
         temp = fp.read().splitlines()
-        i = 0
+        # log length of input
+        logging.info("Input length: " + str(len(temp)))
+        i = 0 # number of loops
         for line in temp:
+            # ignores ~20 line comment block
             if(not line or line[0]=='%'):
                 continue
             entry = line.split('\t')
-            #Remove curly braces
+            #Remove curly braces?
             re.sub('{{ | }}', '', entry[0])
+            # split by ',' does nothing, entry[0] is a ~6 digit string
             origins = entry[0].split(',')
 
             for origin in origins:
                 prefix_origin = entry[1] + "-" + origin
-                data = (prefix_origin,)
+                data = (prefix_origin)
+                # gets back and age and a history for prefix_origin, can we get a row #?
                 cur.execute(sql_select,data)
                 record = cur.fetchone()
                 if(not record):
                     data = (prefix_origin, '01')
                     cur.execute(sql_insert,data)
                 if(record):
+                    # Get history as bytearray from current row
                     history = bytearray(record.history)
-                    age = record.age.days
-                    #history is an array of bytes
-                    if(age/8 > len(history)):
-                        history.append(0)
-                    bit_to_flip = age % 8
-                    history[-1] = history[-1] | bit_to_flip
-                    data = (history, datetime.now(), prefix_origin)
+                    # Convert bytearray to an int
+                    histInt = int.from_bytes(history, byteorder='big', signed=False)
+                    # Bitwise, shift left and add 
+                    histInt = (histInt<<1 | 0x1)
+                    # Convert back to bytearray
+                    histBytes = histInt.to_bytes(math.ceil(histInt.bit_length()/8), byteorder='big', signed=False)
+
+                    #age = record.age.days
+                    #if(age/8 > len(history)):
+                    #    history.append(0)
+                    #bit_to_flip = age % 8
+                    #history[-1] = history[-1] | bit_to_flip
+                    
+                    # Generate tuple to pass to sql command
+                    data = (histBytes, datetime.now(), prefix_origin)
                     cur.execute(sql_update, data)
-    #                days_old =
-    #                data =
-    #                db.execute(sql_update,data)
             i+=1
             conn.commit()
+
+    logging.info("Lines processed: " + str(i))
     #Close DB connection
     cur.close()
     conn.close()
