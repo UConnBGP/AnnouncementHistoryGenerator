@@ -19,6 +19,7 @@ def main():
     logging.basicConfig(level=logging.INFO, filename=LOG_LOCATION + t.strftime("%d_%m_%Y"))
     logging.info("Start Time: " + t.strftime("%c"))
 
+    '''
     filename = "ris_whoisdump.IPv4"
     gz_filename = filename + ".gz"
 
@@ -28,9 +29,8 @@ def main():
         with open (filename, "wb") as f_out:
             shutil.copyfileobj(f_gz, f_out)
     os.remove(gz_filename)
+    '''
 
-    #Parse and upload to DB    
-    #db = Database(cursor_factory=psycopg2.extras.NamedTupleCursor)
     cparser = ConfigParser()
     cparser.read("/etc/bgp/bgp.conf")
     #Establish DB connection, lib_bgp_data doesn't work
@@ -44,6 +44,9 @@ def main():
     cur = conn.cursor(cursor_factory=psycopg2.extras.NamedTupleCursor)
 
     with open(filename) as fp:
+        sql_select_size = """SELECT count(prefix_origin) FROM prefix_origin_history"""
+        sz = cur.execute(sql_select_size).fetchone().count
+
         sql_select_table = """SELECT * FROM prefix_origin_history;"""
         sql_select = """SELECT AGE(first_seen), history
                         FROM prefix_origin_history
@@ -53,10 +56,22 @@ def main():
         sql_update = """UPDATE prefix_origin_history
                         SET history = (%s), last_updated = (%s)
                         WHERE prefix_origin = (%s);"""
+        
+        sql_select_old_record = """SELECT * 
+                        FROM prefix_origin_history
+                        LEFT JOIN validity
+                        ON prefix_origin_history.origin = validity.asn AND prefix_origin_history.prefix = validity.prefix
+                        WHERE validity.asn IS NULL OR validity.prefix IS NULL
+                        """
+
+
+        # temp is a list of ~900,000 strings
         temp = fp.read().splitlines()
         # log length of input
         logging.info("Input length: " + str(len(temp)))
         i = 0 # number of loops
+        k = 0 # number of records match
+        j = 0 # number of new records
         for line in temp:
             # ignores ~20 line comment block
             if(not line or line[0]=='%'):
@@ -74,9 +89,11 @@ def main():
                 cur.execute(sql_select,data)
                 record = cur.fetchone()
                 if(not record):
+                    k++
                     data = (prefix_origin, '01')
                     cur.execute(sql_insert,data)
                 if(record):
+                    j++
                     # Get history as bytearray from current row
                     history = bytearray(record.history)
                     # Convert bytearray to an int
@@ -97,8 +114,13 @@ def main():
                     cur.execute(sql_update, data)
             i+=1
             conn.commit()
+        # Handle records that weren't seen
+
 
     logging.info("Lines processed: " + str(i))
+    logging.info("New records processed: " + str(k))
+    logging.info("Found records processed: " + str(j))
+    logging.info("Missed records updated: NOT ACCOUNTED")
     #Close DB connection
     cur.close()
     conn.close()
