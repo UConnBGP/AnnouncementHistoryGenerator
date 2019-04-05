@@ -69,7 +69,7 @@ def main():
 
             for origin in origins:
                 prefix_origin = entry[1] + "-" + origin
-                data = (prefix_origin)
+                data = (prefix_origin, )
                 # gets back and age and a history for prefix_origin, can we get a row #?
                 cur.execute(sql_select,data)
                 record = cur.fetchone()
@@ -77,24 +77,19 @@ def main():
                     data = (prefix_origin, '01')
                     cur.execute(sql_insert,data)
                 if(record):
+                    nothing = 1
                     # Get history as bytearray from current row
-                    history = bytearray(record.history)
+                    #history = bytearray(record.history)
                     # Convert bytearray to an int
-                    histInt = int.from_bytes(history, byteorder='big', signed=False)
+                    #histInt = int.from_bytes(history, byteorder='big', signed=False)
                     # Bitwise, shift left and add 
-                    histInt = (histInt<<1 | 0x1)
+                    #histInt = (histInt<<1 | 0x1)
                     # Convert back to bytearray
-                    histBytes = histInt.to_bytes(math.ceil(histInt.bit_length()/8), byteorder='big', signed=False)
-
-                    #age = record.age.days
-                    #if(age/8 > len(history)):
-                    #    history.append(0)
-                    #bit_to_flip = age % 8
-                    #history[-1] = history[-1] | bit_to_flip
+                    #histBytes = histInt.to_bytes(math.ceil(histInt.bit_length()/8), byteorder='big', signed=False)
                     
                     # Generate tuple to pass to sql command
-                    data = (histBytes, datetime.now(), prefix_origin)
-                    cur.execute(sql_update, data)
+                    #data = (histBytes, datetime.now(), prefix_origin)
+                    #cur.execute(sql_update, data)
             i+=1
             conn.commit()
 
