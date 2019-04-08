@@ -53,18 +53,21 @@ def main():
         sql_update = """UPDATE prefix_origin_history
                         SET history = (%s), last_updated = (%s)
                         WHERE prefix_origin = (%s);"""
-        temp = fp.read().splitlines()
+        
         # log length of input
         logging.info("Input length: " + str(len(temp)))
+
         i = 0 # number of loops
+        temp = fp.read().splitlines() # split input file into a list of strings by line
         for line in temp:
             # ignores ~20 line comment block
             if(not line or line[0]=='%'):
                 continue
+            # Elements are tab separated
             entry = line.split('\t')
-            #Remove curly braces?
-            re.sub('{{ | }}', '', entry[0])
-            # split by ',' does nothing, entry[0] is a ~6 digit string
+            # Remove curly braces
+            entry[0] = re.sub('(\{{1,2})|\}{1,2}', '', entry[0])
+            # Split by ',' does nothing, entry[0] is a ~6 digit string
             origins = entry[0].split(',')
 
             for origin in origins:
