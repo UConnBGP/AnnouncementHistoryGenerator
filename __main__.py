@@ -54,33 +54,38 @@ def main():
                         SET history = (%s), last_updated = (%s)
                         WHERE prefix_origin = (%s);"""
         
+        temp = fp.read().splitlines() # split input file into a list of strings by line
+        
         # log length of input
         logging.info("Input length: " + str(len(temp)))
 
         i = 0 # number of loops
-        temp = fp.read().splitlines() # split input file into a list of strings by line
+        j = 0 # number of new records
         for line in temp:
             # ignores ~20 line comment block
             if(not line or line[0]=='%'):
                 continue
             # Elements are tab separated
             entry = line.split('\t')
-            # Remove curly braces
-            entry[0] = re.sub('(\{{1,2})|\}{1,2}', '', entry[0])
+            # Ignore AS-Sets
+            if (re.search('\{{1,2}|\}{1,2}', entry[0])!=None):
+                continue
             # Split by ',' does nothing, entry[0] is a ~6 digit string
             origins = entry[0].split(',')
 
             for origin in origins:
+                # Merges prefix and origin asn
                 prefix_origin = entry[1] + "-" + origin
                 data = (prefix_origin, )
                 # gets back and age and a history for prefix_origin, can we get a row #?
                 cur.execute(sql_select,data)
                 record = cur.fetchone()
                 if(not record):
+                    j+=1
                     data = (prefix_origin, '01')
                     cur.execute(sql_insert,data)
                 if(record):
-                    nothing = 1
+                    pass
                     # Get history as bytearray from current row
                     #history = bytearray(record.history)
                     # Convert bytearray to an int
@@ -97,6 +102,7 @@ def main():
             conn.commit()
 
     logging.info("Lines processed: " + str(i))
+    logging.info("New records processed: " + str(j))
     #Close DB connection
     cur.close()
     conn.close()
